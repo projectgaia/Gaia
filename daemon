@@ -1,0 +1,251 @@
+#!/bin/bash -l
+
+##########################################################################
+#  
+#  Gaia, task list organiser in with Caldav server sync.
+#  
+#  Copyright (C) 2013-2014 Dr Adam S. Candy.
+#  Dr Adam S. Candy, contact@gaiaproject.org
+#  
+# This file is part of the Gaia project.
+# 
+# Gaia is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# Gaia is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with Gaia.  If not, see <http://www.gnu.org/licenses/>.
+#
+##########################################################################
+
+name="gaia"
+flagfile="/var/lib/kinmu/${name}"
+core="python ${HOME}/bin/common/gaiaserver/${name}"
+process="${core} -v -l daemon"
+
+red='\033[0;31m'
+green='\033[0;32m'
+blue='\033[0;34m'
+cyan='\033[0;36m'
+magenta='\033[0;35m'
+brightred='\033[1;31m'
+brightgreen='\033[1;32m'
+brightmagenta='\033[1;35m'
+brightyellow='\033[1;33m'
+yellow='\033[0;33m'
+
+bred='\033[7;31m'
+bcyan='\033[7;36m'
+bblue='\033[7;34m'
+bmagenta='\033[7;35m'
+byellow='\033[7;33;40m'
+bgreen='\033[7;32m'
+bwhite='\033[7;37m'
+
+fred='\033[5;31m'
+end='\033[0m'
+
+killandwait()
+{
+  pids=$(ps auxwww | grep -v grep | grep "${process}$" | awk '{print $2}')
+  if [ -n "${pids}" ]; then
+    kill -s TERM $pids >/dev/null 2>&1
+    count=0
+    while ps auxwww | grep -v grep | grep -q "${process}$"; do
+      sleep 1
+      count=$(expr $count + 1)
+      if [ "$count" -gt 30 ]; then
+        # Force kill!
+        pids=$(ps auxwww | grep -v grep | grep "${process}$" | awk '{print $2}')
+        if [ -n "${pids}" ]; then
+          kill -9 $pids >/dev/null 2>&1
+        fi
+        break
+      fi
+    done
+  fi
+}
+
+checkstatus()
+{
+  isrunning=$(/bin/ps axww | grep "$process$" | grep -v grep)
+  if [ "${isrunning}x" == "x" ]; then
+    # Not running
+    echo -e "Status: ${red}Not running${end}"
+    return 1
+  else
+    # Running
+    num=$(/bin/ps axww | grep "$process$" | grep -v grep | wc -l)
+    if [ "$num" -gt 1 ]; then
+      numstr=" (${num})"
+    else
+      numstr=""
+    fi
+    echo -e "Status: ${green}Running${end}${numstr}"
+    return 0
+  fi
+}
+
+
+main()
+{
+  isrunning=$(/bin/ps axww | grep "$process$" | grep -v grep)
+  if [ -e "$flagfile" -a "${isrunning}x" == "x" ]; then
+    # Should be running
+    logger -t $0 starting "${name}"
+    ${process} >/dev/null 2>&1 &
+  elif [ ! -e "$flagfile" -a "${isrunning}x" != "x" ]; then
+    # Should not be running
+    logger -t $0 stopping "${name}"
+    killandwait
+    tidy
+  fi
+}
+
+main_check()
+{
+	# ------------------------------------------------------------
+	# Setup Environment
+	# ------------------------------------------------------------
+	PDIR=${0%`basename $0`}
+	LCK_FILE=/tmp/.locks_`basename $0`.lck
+
+	# ------------------------------------------------------------
+	# Am I Running
+	# ------------------------------------------------------------
+	if [ -f "${LCK_FILE}" ]; then
+
+	# The file exists so read the PID
+	# to see if it is still running
+	MYPID=`head -n 1 "${LCK_FILE}"`
+
+	TEST_RUNNING=`ps -p ${MYPID} | grep ${MYPID}`
+
+	if [ -z "${TEST_RUNNING}" ]; then
+		# The process is not running
+		# Echo current PID into lock file
+		echo "Not running" >&8
+		echo $$ > "${LCK_FILE}"
+		chmod -w "${LCK_FILE}"
+		LOCK=`cat "${LCK_FILE}"`
+		if [ "$LOCK" != "$$" ]; then
+			echo "Lock file clash!" >&8
+			return 1
+		fi
+	else
+		echo "$0 is already running [${MYPID}]" >&8
+		return 0
+	fi
+
+	else
+	#echo "Not running"
+	#date +%y%m%d.%H%M%S
+	echo $$ > "${LCK_FILE}"
+	fi
+
+	# ------------------------------------------------------------
+	# Do Something
+	# ------------------------------------------------------------
+
+	main
+
+	# ------------------------------------------------------------
+	# Cleanup
+	# ------------------------------------------------------------
+	rm -f "${LCK_FILE}"
+
+	# ------------------------------------------------------------
+	# Done
+	# ------------------------------------------------------------
+	return 0
+}
+
+tidy()
+{
+  exec 8>&-
+  if [ -e "$statusfile" -a "$statusfile" != '/dev/null' ]; then rm -f "$statusfile"; fi
+}
+
+usage()
+{
+  echo "Usage: $(basename $0) -h / -v / start / stop / restart / restartclear / reset / clear / log / status"
+  exit 0
+}
+
+interactive=0
+mode='status'
+while [ "$#" -gt "0" ]
+do
+   case "$1" in
+     -h) usage ;;
+     -v) shift; interactive=1;;
+     *)  mode=$1; shift;;
+   esac
+done
+
+if [ "$mode" == 'status' ]; then
+  checkstatus
+  exit 0
+fi
+
+if [ "$mode" == 'log' ]; then
+  #location=$(eval ${core} -v showloglocation)
+  #echo -e "${blue}tail -f ${yellow}\"$location\"${end}" 
+  #tail -f "$location" 
+  eval ${core} tail
+  exit 0
+fi
+
+if [ "$mode" == 'clear' ]; then
+  eval ${core} -v clear
+  exit 0
+fi
+
+if [ "$interactive" -eq 1 ]; then
+  statusfile=""
+  exec 8>&1
+else
+  #statusfile="/tmp/`basename ${0}`_`/usr/bin/whoami`${$}.log"
+  statusfile="/dev/null"
+  # Below not necessary as main_check will exit if another process is running
+  #if [ -e "$statusfile" ]; then echo "ERROR: Status file already exists"; exit 1; fi
+  touch $statusfile
+  exec 8> "$statusfile"
+fi
+
+if [ "$mode" == 'start' ]; then
+  touch "$flagfile"
+elif [ "$mode" == 'stop' -o "$mode" == 'restart' -o "$mode" == 'restartclear' -o "$mode" == 'reset' ]; then
+  rm -f "$flagfile"
+fi
+
+# If mode ='' (or not status or update)
+main_check
+
+if [ "$mode" == 'restart' -o "$mode" == 'restartclear' -o "$mode" == 'reset' ]; then
+  checkstatus
+  # Clear log on restartclear or reset
+  if [ "$mode" == 'restartclear' -o "$mode" == 'reset' ]; then
+    eval ${core} -v clear
+  fi
+
+  # Refill caldav on reset
+  if [ "$mode" == 'reset' ]; then
+    eval ${core} -v -l reset
+  fi
+  touch "$flagfile"
+  main_check
+fi
+
+#tidy
+
+if [ "$mode" == 'start' -o "$mode" == 'stop' -o "$mode" == 'restart' -o "$mode" == 'restartclear' -o "$mode" == 'reset' ]; then
+  checkstatus
+fi
+
