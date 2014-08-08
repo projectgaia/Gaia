@@ -12,7 +12,10 @@ Inspired by projects such as:
 - [Omnifocus](https://www.omnigroup.com/omnifocus)
 - [Org-mode](http://orgmode.org)
 
+Web pages
+---------
 
+For further details, see [gaiaproject.org](http://gaiaproject.org).
 
 Contact
 -------
