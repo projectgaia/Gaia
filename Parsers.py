@@ -185,22 +185,6 @@ def do_avoid_weekend(date, avoid_weekends=False):
       report(colour.grey + '  Day is a Sunday, skipping until Monday' + colour.end)
   return date
 
-def spacedemoji(string, plain=False):
-  return string
-  # if plain:
-  #   return string
-  # out = ''
-  # try:
-  #   for char in string.decode("utf-8"):
-  #     en = char.encode("utf-8")
-  #     out = out + en
-  #     if len(en) > 1:
-  #       out = out + ' '
-  # except:
-  #   return string
-  # return out
-
-
 def next_weekday(day):
   # monday, mon, tue, tues, thurs, thur, thu
   days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -221,7 +205,6 @@ def next_weekday(day):
       target = target + timedelta(days=1)
   return target.strftime('%y%m%d')
 
-
 def next_increment(string):
   # day, week, 2weeks, 4years
   num = re.findall('\d+', string)
@@ -241,4 +224,24 @@ def next_increment(string):
     error('Can not interpret date string ' + str(string))
     target = universe.now
   return target.strftime('%y%m%d')
+
+def spacedemoji(string, plain=False):
+  # Correctly space wide characters in terminal
+  # Adds a space after a sequence of long characters
+  if plain:
+    return string
+  out = ''
+  try:
+    longchar = False
+    for char in string:
+      is_long = len(char.encode('utf-8')) > 1
+      if longchar and not is_long:
+        out = out + ' '
+        longchar = False
+      out = out + char
+      if is_long:
+        longchar = True
+  except:
+    out = string
+  return out
 
