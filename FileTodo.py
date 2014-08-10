@@ -35,7 +35,7 @@ from uuid import uuid4
 from Support import error, report
 from Support import generate_mono
 from Support import repo_add, repo_remove, repo_update
-from Parsers import is_relative_date, calculate_delta, prioritystring, is_same_time, timedelta_to_human, do_avoid_weekend
+from Parsers import is_relative_date, calculate_delta, prioritystring, is_same_time, timedelta_to_human, do_avoid_weekend, next_weekday, next_increment
 
 def indentation(s, tabsize=2):
   sx = s.expandtabs(tabsize)
@@ -122,7 +122,8 @@ def tasklist_read(name, category=None):
   #root = FileTodos(lines[:end], title=name, parents=[category], filenotes=lines[end+1:])
   
   root = FileTodos(lines, title=name, parents=[category])
-  
+  root.check_for_modified_children() 
+
   if root.is_empty():
     report('  ' + colour.grey + 'Removing EMPTY ' + colour.blue + category + colour.grey + '/' + colour.yellowbright + root.name + colour.end + ' ' + colour.grey + '(' + colour.grey + filename + colour.grey + ')' + colour.end)
     if not universe.dry:
@@ -187,6 +188,10 @@ class FileTodos(object):
     self.current = False
     self.error = False
     self.sublist = None
+    self.parents = parents
+    self.parent = parent
+    self.number = number
+    self.uid = uid
     self.translate = ''
     if translate is not None:
       self.translate = translate
@@ -202,11 +207,7 @@ class FileTodos(object):
 
     self.start, allday = parsedate(self.starttext, reference=self.due)
     self.expire, allday = parsedate(self.expiretext, reference=self.due, forward=True)
-    self.parents = parents
-    self.parent = parent
-    self.number = number
     self.active = False
-    self.uid = uid
     self.titleoptions = ''
     self.type = 'file'
     self.next_action = next_action
@@ -820,13 +821,26 @@ class FileTodos(object):
       self.make_modified(task=task)
     return
 
+  def check_for_modified_children(self, root=True):
+    modified = False
+    if self.modified:
+      modified = True
+    for child in self.children:
+      modified = modified or child.check_for_modified_children(root=False)
+    if root and modified:
+      self.set_modified()
+    return modified
 
   def set_modified(self, task=None):
     if task is not None:
       name = task.name
     else:
       name = '[not provided]'
-    report(colour.magenta+'Marking modified ' + self.parents[-1] + '|' + self.name + ' for task ' + name + colour.end)
+    if len(self.parents) > 0:
+      parentstr = self.parents[-1]
+    else:
+      parentstr = '[parent unknown]'
+    report(colour.magenta+'Marking modified ' + parentstr + '|' + self.name + ' for task ' + name + colour.end)
     self.modified = True
 
   def make_modified(self, task):
@@ -1464,13 +1478,20 @@ class FileTodos(object):
       # NLP not working here, as cannot apply set_modified at this early point of parsing,
       #   would need to mark to update aiyo at a later stage, once the FileTodo object
       #   has been set up.
-      # if re.match('^today$', word):
-      #   self.duetext = universe.now.strftime('%y%m%d')
-      #   self.set_modified(self)
-      # elif re.match('^tomorrow$', word):
-      #   self.duetext = (universe.now + timedelta(days=1)).strftime('%y%m%d')
-      #   self.set_modified(self)
-      if re.match('^\d{6}$', word):
+      if re.match('^today$', word):
+        self.duetext = universe.now.strftime('%y%m%d')
+        self.set_modified(self)
+      elif re.match('^tomorrow$', word):
+        self.duetext = (universe.now + timedelta(days=1)).strftime('%y%m%d')
+        self.set_modified(self)
+      elif word in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] \
+                 + ['mon', 'tues', 'tue', 'wed', 'thurs', 'thu', 'thur', 'fri', 'sat', 'sun']:
+        self.duetext = next_weekday(word)
+        self.set_modified(self)
+      elif re.match('^\d*(day|week|month|year)s*$', word):
+        self.duetext = next_increment(word)
+        self.set_modified(self)
+      elif re.match('^\d{6}$', word):
         self.duetext = word
       elif re.match('^\d{10}$', word):
         self.duetext = word
