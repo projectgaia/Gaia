@@ -28,6 +28,7 @@ from Universe import universe, colour
 import sys
 import os
 from datetime import datetime, timedelta, date, time
+from dateutil.relativedelta import relativedelta
 import re
 from Support import error, report
 
@@ -184,28 +185,63 @@ def do_avoid_weekend(date, avoid_weekends=False):
       report(colour.grey + '  Day is a Sunday, skipping until Monday' + colour.end)
   return date
 
+def next_weekday(day):
+  # monday, mon, tue, tues, thurs, thur, thu
+  days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+  found = None
+  for i in range(len(days)):
+    if day == days[i]: found=i; break
+    if day == days[i][:3]: found=i; break
+    if (i == 1) and (day == days[i][:4]): found=i; break
+    if (i == 3) and (day == days[i][:4]): found=i; break
+    if (i == 3) and (day == days[i][:5]): found=i; break
+  #print day, '->', days[found], found
+  if found is None:
+    error('Can not interpret date string ' + str(day))
+    target = universe.now
+  else:
+    target = universe.now + timedelta(days=1)
+    while target.weekday() != found:
+      target = target + timedelta(days=1)
+  return target.strftime('%y%m%d')
+
+def next_increment(string):
+  # day, week, 2weeks, 4years
+  num = re.findall('\d+', string)
+  if len(num) > 0:
+    n = float(num[0])
+  else:
+    n = 1
+  if 'day' in string:
+    target = universe.now + timedelta(days=n)
+  elif 'week' in string:
+    target = universe.now + timedelta(days=(n * 7))
+  elif 'month' in string:
+    target = universe.now + relativedelta(months=n)
+  elif 'year' in string:
+    target = universe.now + relativedelta(years=n)
+  else:
+    error('Can not interpret date string ' + str(string))
+    target = universe.now
+  return target.strftime('%y%m%d')
+
 def spacedemoji(string, plain=False):
-  return string
-  # if plain:
-  #   return string
-  # out = ''
-  # try:
-  #   for char in string.decode("utf-8"):
-  #     en = char.encode("utf-8")
-  #     out = out + en
-  #     if len(en) > 1:
-  #       out = out + ' '
-  # except:
-  #   return string
-  # return out
-
-
-
-
-
-
-
-
-
-
+  # Correctly space wide characters in terminal
+  # Adds a space after a sequence of long characters
+  if plain:
+    return string
+  out = ''
+  try:
+    longchar = False
+    for char in string:
+      is_long = len(char.encode('utf-8')) > 1
+      if longchar and not is_long:
+        out = out + ' '
+        longchar = False
+      out = out + char
+      if is_long:
+        longchar = True
+  except:
+    out = string
+  return out
 
